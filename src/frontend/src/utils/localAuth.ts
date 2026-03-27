@@ -114,3 +114,22 @@ export function updateDisplayName(phone: string, name: string): void {
   user.displayName = name;
   saveUser(user);
 }
+
+export function getAllUsers(): LocalUser[] {
+  const users: LocalUser[] = [];
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i);
+    if (key?.startsWith(USER_PREFIX)) {
+      const data = localStorage.getItem(key);
+      if (data) {
+        try {
+          const user = JSON.parse(data) as LocalUser;
+          users.push(user);
+        } catch {
+          // skip invalid
+        }
+      }
+    }
+  }
+  return users.sort((a, b) => b.createdAt - a.createdAt);
+}

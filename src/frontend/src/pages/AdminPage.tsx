@@ -8,6 +8,7 @@ import {
   Loader2,
   MessageCircle,
   ShieldOff,
+  Users,
   XCircle,
 } from "lucide-react";
 import { motion } from "motion/react";
@@ -23,13 +24,14 @@ import {
   useGetAllHelpConversations,
   useReplyHelpMessage,
 } from "../hooks/useQueries";
+import { type LocalUser, getAllUsers, updateBalance } from "../utils/localAuth";
 
 interface AdminPageProps {
   onBack?: () => void;
   forceAdmin?: boolean;
 }
 
-type AdminTab = "recharge" | "helpdesk";
+type AdminTab = "recharge" | "helpdesk" | "users";
 
 function HelpDeskPanel({ isAdmin }: { isAdmin: boolean }) {
   const { data: conversations = [] } = useGetAllHelpConversations(isAdmin);
@@ -227,6 +229,213 @@ function HelpDeskPanel({ isAdmin }: { isAdmin: boolean }) {
   );
 }
 
+function UsersPanel() {
+  const [users, setUsers] = useState<LocalUser[]>([]);
+  const [search, setSearch] = useState("");
+  const [editBalancePhone, setEditBalancePhone] = useState<string | null>(null);
+  const [newBalance, setNewBalance] = useState("");
+
+  useEffect(() => {
+    setUsers(getAllUsers());
+  }, []);
+
+  const filtered = users.filter(
+    (u) =>
+      u.phone.includes(search) ||
+      u.displayName.toLowerCase().includes(search.toLowerCase()),
+  );
+
+  const handleUpdateBalance = (phone: string) => {
+    const val = Number.parseInt(newBalance, 10);
+    if (Number.isNaN(val) || val < 0) {
+      toast.error("সঠিক balance দিন");
+      return;
+    }
+    updateBalance(phone, val);
+    setUsers(getAllUsers());
+    setEditBalancePhone(null);
+    setNewBalance("");
+    toast.success("ব্যালেন্স update হয়েছে");
+  };
+
+  return (
+    <div className="space-y-3 pt-2">
+      {/* Search */}
+      <Input
+        data-ocid="admin.users.search"
+        placeholder="ফোন নম্বর বা নাম দিয়ে খুঁজুন..."
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+        className="h-10 rounded-xl text-sm"
+        style={{
+          background: "oklch(0.18 0.04 245)",
+          border: "1px solid oklch(0.30 0.04 245)",
+          color: "oklch(0.92 0.01 245)",
+        }}
+      />
+
+      {filtered.length === 0 ? (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          className="flex flex-col items-center justify-center py-16 gap-3"
+        >
+          <Users size={40} className="text-muted-foreground" />
+          <p className="text-muted-foreground font-medium">কোনো user নেই</p>
+        </motion.div>
+      ) : (
+        filtered.map((user, idx) => (
+          <motion.div
+            key={user.phone}
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: idx * 0.04 }}
+            data-ocid={`admin.users.item.${idx + 1}`}
+            className="rounded-2xl p-4"
+            style={{
+              background: "oklch(0.18 0.04 245)",
+              border: "1px solid oklch(0.28 0.03 245)",
+            }}
+          >
+            {/* User info */}
+            <div className="flex items-start justify-between mb-3">
+              <div className="flex items-center gap-3">
+                <div
+                  className="w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm flex-shrink-0"
+                  style={{
+                    background: "oklch(0.28 0.08 260)",
+                    color: "oklch(0.78 0.14 82)",
+                  }}
+                >
+                  {user.displayName.slice(0, 2).toUpperCase()}
+                </div>
+                <div>
+                  <p className="font-bold text-sm text-foreground">
+                    {user.displayName}
+                  </p>
+                  <p
+                    className="text-xs font-mono"
+                    style={{ color: "oklch(0.65 0.10 245)" }}
+                  >
+                    {user.phone}
+                  </p>
+                </div>
+              </div>
+              <div className="text-right">
+                <p
+                  className="text-lg font-black"
+                  style={{ color: "oklch(0.78 0.14 82)" }}
+                >
+                  {user.balance.toLocaleString()} TK
+                </p>
+                <p className="text-[10px] text-muted-foreground">
+                  {new Date(user.createdAt).toLocaleDateString("bn-BD")}
+                </p>
+              </div>
+            </div>
+
+            {/* Stats row */}
+            <div className="flex gap-2 mb-3">
+              <Badge
+                style={{
+                  background: "oklch(0.30 0.06 245)",
+                  color: "oklch(0.72 0.06 245)",
+                  border: "none",
+                  fontSize: "10px",
+                }}
+              >
+                {user.rechargeHistory.length} recharge
+              </Badge>
+              <Badge
+                style={{
+                  background:
+                    user.balance > 0
+                      ? "oklch(0.35 0.12 140 / 0.3)"
+                      : "oklch(0.25 0.04 245)",
+                  color:
+                    user.balance > 0
+                      ? "oklch(0.65 0.18 140)"
+                      : "oklch(0.55 0.02 245)",
+                  border: "none",
+                  fontSize: "10px",
+                }}
+              >
+                {user.balance > 0 ? "Active" : "No Balance"}
+              </Badge>
+            </div>
+
+            {/* Edit balance */}
+            {editBalancePhone === user.phone ? (
+              <div className="flex gap-2">
+                <Input
+                  data-ocid={`admin.users.item.${idx + 1}.balance_input`}
+                  type="number"
+                  value={newBalance}
+                  onChange={(e) => setNewBalance(e.target.value)}
+                  onKeyDown={(e) =>
+                    e.key === "Enter" && handleUpdateBalance(user.phone)
+                  }
+                  placeholder="নতুন balance (TK)"
+                  className="flex-1 h-9 text-sm rounded-xl"
+                  style={{
+                    background: "oklch(0.22 0.04 245)",
+                    border: "1px solid oklch(0.45 0.14 82)",
+                    color: "oklch(0.92 0.01 245)",
+                  }}
+                  autoFocus
+                />
+                <Button
+                  data-ocid={`admin.users.item.${idx + 1}.save_button`}
+                  onClick={() => handleUpdateBalance(user.phone)}
+                  className="h-9 px-3 rounded-xl font-bold text-xs"
+                  style={{
+                    background: "oklch(0.35 0.12 140 / 0.4)",
+                    border: "1px solid oklch(0.65 0.18 140)",
+                    color: "oklch(0.78 0.18 140)",
+                  }}
+                >
+                  <CheckCircle size={14} />
+                </Button>
+                <Button
+                  data-ocid={`admin.users.item.${idx + 1}.cancel_button`}
+                  onClick={() => {
+                    setEditBalancePhone(null);
+                    setNewBalance("");
+                  }}
+                  className="h-9 px-3 rounded-xl font-bold text-xs"
+                  style={{
+                    background: "oklch(0.25 0.10 27 / 0.3)",
+                    border: "1px solid oklch(0.577 0.245 27)",
+                    color: "oklch(0.70 0.20 27)",
+                  }}
+                >
+                  <XCircle size={14} />
+                </Button>
+              </div>
+            ) : (
+              <Button
+                data-ocid={`admin.users.item.${idx + 1}.edit_balance_button`}
+                onClick={() => {
+                  setEditBalancePhone(user.phone);
+                  setNewBalance(String(user.balance));
+                }}
+                className="w-full h-9 rounded-xl font-bold text-xs"
+                style={{
+                  background: "oklch(0.22 0.06 260)",
+                  border: "1px solid oklch(0.35 0.08 260)",
+                  color: "oklch(0.72 0.14 82)",
+                }}
+              >
+                Balance Edit করুন
+              </Button>
+            )}
+          </motion.div>
+        ))
+      )}
+    </div>
+  );
+}
+
 export function AdminPage({ onBack, forceAdmin }: AdminPageProps) {
   const { data: isAdmin, isLoading: adminLoading } = useIsAdmin();
   const effectiveAdmin = forceAdmin || !!isAdmin;
@@ -336,14 +545,14 @@ export function AdminPage({ onBack, forceAdmin }: AdminPageProps) {
 
       {/* Tab bar */}
       <div
-        className="flex flex-shrink-0"
+        className="flex flex-shrink-0 overflow-x-auto"
         style={{ borderBottom: "1px solid oklch(0.25 0.03 245)" }}
       >
         <button
           type="button"
           data-ocid="admin.recharge.tab"
           onClick={() => setActiveTab("recharge")}
-          className="flex-1 py-3 text-sm font-bold transition-colors"
+          className="flex-1 py-3 text-xs font-bold transition-colors whitespace-nowrap px-2"
           style={{
             color:
               activeTab === "recharge"
@@ -355,10 +564,10 @@ export function AdminPage({ onBack, forceAdmin }: AdminPageProps) {
                 : "2px solid transparent",
           }}
         >
-          Recharge Requests
+          Recharge
           {requests.length > 0 && (
             <span
-              className="ml-2 text-xs px-1.5 py-0.5 rounded-full font-bold"
+              className="ml-1.5 text-[10px] px-1.5 py-0.5 rounded-full font-bold"
               style={{
                 background: "oklch(0.55 0.22 27 / 0.3)",
                 color: "oklch(0.80 0.22 27)",
@@ -372,7 +581,7 @@ export function AdminPage({ onBack, forceAdmin }: AdminPageProps) {
           type="button"
           data-ocid="admin.helpdesk.tab"
           onClick={() => setActiveTab("helpdesk")}
-          className="flex-1 py-3 text-sm font-bold transition-colors"
+          className="flex-1 py-3 text-xs font-bold transition-colors whitespace-nowrap px-2"
           style={{
             color:
               activeTab === "helpdesk"
@@ -387,7 +596,7 @@ export function AdminPage({ onBack, forceAdmin }: AdminPageProps) {
           Help Desk
           {conversations.length > 0 && (
             <span
-              className="ml-2 text-xs px-1.5 py-0.5 rounded-full font-bold"
+              className="ml-1.5 text-[10px] px-1.5 py-0.5 rounded-full font-bold"
               style={{
                 background: "oklch(0.45 0.18 160 / 0.2)",
                 color: "oklch(0.65 0.18 140)",
@@ -396,6 +605,24 @@ export function AdminPage({ onBack, forceAdmin }: AdminPageProps) {
               {conversations.length}
             </span>
           )}
+        </button>
+        <button
+          type="button"
+          data-ocid="admin.users.tab"
+          onClick={() => setActiveTab("users")}
+          className="flex-1 py-3 text-xs font-bold transition-colors whitespace-nowrap px-2"
+          style={{
+            color:
+              activeTab === "users"
+                ? "oklch(0.72 0.18 280)"
+                : "oklch(0.55 0.02 245)",
+            borderBottom:
+              activeTab === "users"
+                ? "2px solid oklch(0.72 0.18 280)"
+                : "2px solid transparent",
+          }}
+        >
+          Users
         </button>
       </div>
 
@@ -540,6 +767,8 @@ export function AdminPage({ onBack, forceAdmin }: AdminPageProps) {
         )}
 
         {activeTab === "helpdesk" && <HelpDeskPanel isAdmin={effectiveAdmin} />}
+
+        {activeTab === "users" && <UsersPanel />}
       </ScrollArea>
     </div>
   );
