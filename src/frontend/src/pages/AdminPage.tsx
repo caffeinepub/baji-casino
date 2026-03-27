@@ -36,6 +36,7 @@ function formatTime(ns: bigint) {
 
 interface AdminPageProps {
   onBack?: () => void;
+  forceAdmin?: boolean;
 }
 
 type AdminTab = "recharge" | "helpdesk";
@@ -254,12 +255,13 @@ function HelpDeskPanel({
   );
 }
 
-export function AdminPage({ onBack }: AdminPageProps) {
+export function AdminPage({ onBack, forceAdmin }: AdminPageProps) {
   const { data: isAdmin, isLoading: adminLoading } = useIsAdmin();
+  const effectiveAdmin = forceAdmin || !!isAdmin;
   const { data: requests = [], isLoading: reqLoading } =
     usePendingRechargeRequests();
   const { data: conversations = [], isLoading: convLoading } =
-    useGetAllHelpConversations(!!isAdmin);
+    useGetAllHelpConversations(effectiveAdmin);
   const approve = useApproveRecharge();
   const reject = useRejectRecharge();
   const [activeTab, setActiveTab] = useState<AdminTab>("recharge");
@@ -274,7 +276,7 @@ export function AdminPage({ onBack }: AdminPageProps) {
     toast.error("Request rejected.");
   };
 
-  if (adminLoading) {
+  if (!forceAdmin && adminLoading) {
     return (
       <div className="flex-1 flex items-center justify-center">
         <Loader2
@@ -286,7 +288,7 @@ export function AdminPage({ onBack }: AdminPageProps) {
     );
   }
 
-  if (!isAdmin) {
+  if (!effectiveAdmin) {
     return (
       <div className="flex-1 flex flex-col">
         {onBack && (

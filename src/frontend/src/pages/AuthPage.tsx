@@ -9,9 +9,14 @@ import { useLocalAuth } from "../hooks/useLocalAuth";
 interface AuthPageProps {
   onGuestPlay: () => void;
   onLoggedIn?: () => void;
+  onAdminLogin?: () => void;
 }
 
-export function AuthPage({ onGuestPlay, onLoggedIn }: AuthPageProps) {
+export function AuthPage({
+  onGuestPlay,
+  onLoggedIn,
+  onAdminLogin,
+}: AuthPageProps) {
   const { login, register } = useLocalAuth();
   const [tab, setTab] = useState<"login" | "register">("login");
   const [phone, setPhone] = useState("");
@@ -281,6 +286,20 @@ export function AuthPage({ onGuestPlay, onLoggedIn }: AuthPageProps) {
         >
           Continue as Guest
         </Button>
+
+        {onAdminLogin && (
+          <div className="text-center mt-4">
+            <button
+              type="button"
+              data-ocid="auth.admin_login.button"
+              onClick={onAdminLogin}
+              className="text-xs transition-colors hover:underline"
+              style={{ color: "oklch(0.45 0.03 245)" }}
+            >
+              Admin
+            </button>
+          </div>
+        )}
       </motion.div>
 
       <div className="mt-auto py-6 text-center">

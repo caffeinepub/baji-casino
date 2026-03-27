@@ -7,6 +7,7 @@ import { RechargeGate } from "./components/RechargeGate";
 import { useLocalAuth } from "./hooks/useLocalAuth";
 import { useIsAdmin } from "./hooks/useQueries";
 import { AccountPage } from "./pages/AccountPage";
+import { AdminLoginPage } from "./pages/AdminLoginPage";
 import { AdminPage } from "./pages/AdminPage";
 import { AuthPage } from "./pages/AuthPage";
 import { DepositPage } from "./pages/DepositPage";
@@ -28,6 +29,8 @@ export default function App() {
   const { data: isAdmin } = useIsAdmin();
 
   const [rechargeGateGame, setRechargeGateGame] = useState<string | null>(null);
+  const [showAdminLogin, setShowAdminLogin] = useState(false);
+  const [adminAuthenticated, setAdminAuthenticated] = useState(false);
 
   const isAuthenticated = isLoggedIn || isGuest;
 
@@ -95,13 +98,43 @@ export default function App() {
     );
   }
 
+  // Admin authenticated via separate login
+  if (adminAuthenticated) {
+    return (
+      <>
+        <div className="flex flex-col flex-1 min-h-0">
+          <AdminPage forceAdmin onBack={() => setAdminAuthenticated(false)} />
+        </div>
+        <Toaster position="top-center" />
+      </>
+    );
+  }
+
   if (!isAuthenticated) {
+    if (showAdminLogin) {
+      return (
+        <>
+          <div className="flex-1 overflow-y-auto">
+            <AdminLoginPage
+              onSuccess={() => {
+                setAdminAuthenticated(true);
+                setShowAdminLogin(false);
+              }}
+              onBack={() => setShowAdminLogin(false)}
+            />
+          </div>
+          <Toaster position="top-center" />
+        </>
+      );
+    }
+
     return (
       <>
         <div className="flex-1 overflow-y-auto">
           <AuthPage
             onGuestPlay={() => setIsGuest(true)}
             onLoggedIn={refreshUser}
+            onAdminLogin={() => setShowAdminLogin(true)}
           />
         </div>
         <Toaster position="top-center" />
