@@ -5,6 +5,7 @@ import { motion } from "motion/react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { useLocalAuth } from "../hooks/useLocalAuth";
+import { useRegisterUserProfile } from "../hooks/useQueries";
 
 interface AuthPageProps {
   onGuestPlay: () => void;
@@ -18,6 +19,7 @@ export function AuthPage({
   onAdminLogin,
 }: AuthPageProps) {
   const { login, register } = useLocalAuth();
+  const registerProfile = useRegisterUserProfile();
   const [tab, setTab] = useState<"login" | "register">("login");
   const [phone, setPhone] = useState("");
   const [displayName, setDisplayName] = useState("");
@@ -56,14 +58,17 @@ export function AuthPage({
           onLoggedIn?.();
         }
       } else {
-        const result = register(
-          phone.trim(),
-          password,
-          displayName.trim() || undefined,
-        );
+        const resolvedName =
+          displayName.trim() || `Player${phone.trim().slice(-4)}`;
+        const result = register(phone.trim(), password, resolvedName);
         if (!result.success) {
           toast.error(result.error || "Registration failed");
         } else {
+          // Save profile to backend so admin can see all users
+          registerProfile.mutate({
+            phone: phone.trim(),
+            displayName: resolvedName,
+          });
           toast.success("Account তৈরি হয়েছে! Recharge করুন game খেলতে");
           onLoggedIn?.();
         }

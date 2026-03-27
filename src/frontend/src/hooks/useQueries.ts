@@ -5,6 +5,7 @@ import type {
   HelpConversation,
   HelpMessage,
   RechargeRequest,
+  UserProfileWithBalance,
 } from "../declarations/backend.did.d";
 import { useActor } from "./useActor";
 
@@ -156,6 +157,7 @@ export function useApproveRecharge() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["recharge_requests"] });
       queryClient.invalidateQueries({ queryKey: ["balance"] });
+      queryClient.invalidateQueries({ queryKey: ["allUserProfiles"] });
     },
   });
 }
@@ -244,6 +246,57 @@ export function useReplyHelpMessage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["helpConversations"] });
+    },
+  });
+}
+
+export function useRegisterUserProfile() {
+  const { actor } = useActor();
+  return useMutation({
+    mutationFn: async ({
+      phone,
+      displayName,
+    }: { phone: string; displayName: string }) => {
+      if (!actor) return;
+      return (actor as any).registerUserProfile(
+        phone,
+        displayName,
+      ) as Promise<undefined>;
+    },
+  });
+}
+
+export function useGetAllUserProfiles(isAdmin: boolean) {
+  const { actor, isFetching } = useActor();
+  return useQuery<UserProfileWithBalance[]>({
+    queryKey: ["allUserProfiles"],
+    queryFn: async () => {
+      if (!actor) return [];
+      return (actor as any).getAllUserProfiles() as Promise<
+        UserProfileWithBalance[]
+      >;
+    },
+    enabled: !!actor && !isFetching && isAdmin,
+    refetchInterval: 5000,
+  });
+}
+
+export function useAdminSetUserBalance() {
+  const { actor } = useActor();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      principal,
+      newBalance,
+    }: { principal: Principal; newBalance: bigint }) => {
+      if (!actor) throw new Error("Not connected");
+      return (actor as any).adminSetUserBalance(
+        principal,
+        newBalance,
+      ) as Promise<boolean>;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["allUserProfiles"] });
     },
   });
 }

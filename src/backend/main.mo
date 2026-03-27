@@ -55,6 +55,20 @@ actor {
     messages : [HelpMessage];
   };
 
+  type UserProfile = {
+    phone : Text;
+    displayName : Text;
+    createdAt : Time.Time;
+  };
+
+  type UserProfileWithBalance = {
+    principal : Principal;
+    phone : Text;
+    displayName : Text;
+    balance : Nat;
+    createdAt : Time.Time;
+  };
+
   let INITIAL_BALANCE = 0;
   let DAILY_BONUS_AMOUNT = 100;
   let DAY_NANOS : Int = 86_400_000_000_000;
@@ -72,6 +86,8 @@ actor {
 
   let helpMessages = Map.empty<Principal, List.List<HelpMessage>>();
   var helpMessageCounter : Nat = 0;
+
+  let userProfiles = Map.empty<Principal, UserProfile>();
 
   func getBalanceInternal(caller : Principal) : Nat {
     switch (balances.get(caller)) {
@@ -287,6 +303,43 @@ actor {
         true;
       };
     };
+  };
+
+  // ── User Profiles ──────────────────────────────────────────────────────
+
+  public shared ({ caller }) func registerUserProfile(phone : Text, displayName : Text) : async () {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
+      Runtime.trap("Unauthorized");
+    };
+    let profile : UserProfile = {
+      phone;
+      displayName;
+      createdAt = Time.now();
+    };
+    userProfiles.add(caller, profile);
+  };
+
+  public query ({ caller }) func getAllUserProfiles() : async [UserProfileWithBalance] {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
+      Runtime.trap("Unauthorized: Only admin can view all users");
+    };
+    userProfiles.entries().toArray().map(
+      func((principal, profile) : (Principal, UserProfile)) : UserProfileWithBalance {
+        let balance = switch (balances.get(principal)) {
+          case (null) { 0 };
+          case (?b) { b };
+        };
+        { principal; phone = profile.phone; displayName = profile.displayName; balance; createdAt = profile.createdAt };
+      }
+    );
+  };
+
+  public shared ({ caller }) func adminSetUserBalance(userPrincipal : Principal, newBalance : Nat) : async Bool {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
+      Runtime.trap("Unauthorized: Only admin can set balances");
+    };
+    balances.add(userPrincipal, newBalance);
+    true;
   };
 
   // ── Help Desk ──────────────────────────────────────────────────────────

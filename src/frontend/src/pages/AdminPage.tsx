@@ -2,11 +2,13 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import type { Principal } from "@icp-sdk/core/principal";
 import {
   ArrowLeft,
   CheckCircle,
   Loader2,
   MessageCircle,
+  RefreshCw,
   ShieldOff,
   Users,
   XCircle,
@@ -15,16 +17,15 @@ import { motion } from "motion/react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import {
+  useAdminSetUserBalance,
   useApproveRecharge,
+  useGetAllUserProfiles,
   useIsAdmin,
   usePendingRechargeRequests,
   useRejectRecharge,
 } from "../hooks/useQueries";
-import {
-  useGetAllHelpConversations,
-  useReplyHelpMessage,
-} from "../hooks/useQueries";
-import { type LocalUser, getAllUsers, updateBalance } from "../utils/localAuth";
+import { getAllConversations, sendSupportReply } from "../utils/localHelpDesk";
+import type { HelpDeskMessage } from "../utils/localHelpDesk";
 
 interface AdminPageProps {
   onBack?: () => void;
@@ -33,21 +34,26 @@ interface AdminPageProps {
 
 type AdminTab = "recharge" | "helpdesk" | "users";
 
-function HelpDeskPanel({ isAdmin }: { isAdmin: boolean }) {
-  const { data: conversations = [] } = useGetAllHelpConversations(isAdmin);
-  const replyMutation = useReplyHelpMessage();
+function HelpDeskPanel({ isAdmin: _isAdmin }: { isAdmin: boolean }) {
+  const [conversations, setConversations] = useState<
+    { phone: string; messages: HelpDeskMessage[] }[]
+  >([]);
   const [expandedKey, setExpandedKey] = useState<string | null>(null);
   const [replyInputs, setReplyInputs] = useState<Record<string, string>>({});
 
-  const handleReply = async (conv: {
-    userId: { toString(): string };
-    messages: unknown[];
-  }) => {
-    const key = conv.userId.toString();
-    const text = replyInputs[key]?.trim();
+  useEffect(() => {
+    const load = () => setConversations(getAllConversations());
+    load();
+    const interval = setInterval(load, 3000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const handleReply = (phone: string) => {
+    const text = replyInputs[phone]?.trim();
     if (!text) return;
-    await replyMutation.mutateAsync({ userId: conv.userId as any, text });
-    setReplyInputs((prev) => ({ ...prev, [key]: "" }));
+    sendSupportReply(phone, text);
+    setReplyInputs((prev) => ({ ...prev, [phone]: "" }));
+    setConversations(getAllConversations());
     toast.success("Reply পাঠানো হয়েছে");
   };
 
@@ -70,7 +76,7 @@ function HelpDeskPanel({ isAdmin }: { isAdmin: boolean }) {
   return (
     <div className="space-y-3 pt-2">
       {conversations.map((conv, idx) => {
-        const convKey = conv.userId.toString();
+        const convKey = conv.phone;
         const isExpanded = expandedKey === convKey;
         const lastMsg = conv.messages[conv.messages.length - 1];
         return (
@@ -86,7 +92,6 @@ function HelpDeskPanel({ isAdmin }: { isAdmin: boolean }) {
               border: "1px solid oklch(0.28 0.03 245)",
             }}
           >
-            {/* Conversation header */}
             <button
               type="button"
               data-ocid={`admin.helpdesk.item.${idx + 1}.toggle`}
@@ -104,8 +109,8 @@ function HelpDeskPanel({ isAdmin }: { isAdmin: boolean }) {
                   />
                 </div>
                 <div className="min-w-0">
-                  <p className="text-sm font-semibold text-foreground font-mono">
-                    {convKey.slice(0, 12)}...
+                  <p className="text-sm font-semibold text-foreground">
+                    {conv.phone}
                   </p>
                   {lastMsg && (
                     <p className="text-xs text-muted-foreground truncate max-w-[180px]">
@@ -135,28 +140,24 @@ function HelpDeskPanel({ isAdmin }: { isAdmin: boolean }) {
               </div>
             </button>
 
-            {/* Expanded chat */}
             {isExpanded && (
               <div
                 className="border-t px-4 pt-3 pb-4"
                 style={{ borderColor: "oklch(0.25 0.03 245)" }}
               >
-                {/* Message list */}
                 <div className="space-y-2 mb-3 max-h-48 overflow-y-auto">
                   {conv.messages.map((msg) => (
                     <div
-                      key={String(msg.id)}
-                      className={`flex ${
-                        msg.from === "user" ? "justify-end" : "justify-start"
-                      }`}
+                      key={msg.id}
+                      className={`flex ${msg.from === "user" ? "justify-end" : "justify-start"}`}
                     >
                       <div
-                        className="max-w-[80%] px-3 py-2 rounded-xl text-xs leading-relaxed"
+                        className="max-w-[75%] rounded-2xl px-3 py-2 text-sm"
                         style={{
                           background:
                             msg.from === "user"
-                              ? "oklch(0.45 0.18 160 / 0.3)"
-                              : "oklch(0.26 0.05 245)",
+                              ? "oklch(0.28 0.10 160 / 0.5)"
+                              : "oklch(0.25 0.06 82 / 0.5)",
                           color: "oklch(0.88 0.01 245)",
                           borderBottomRightRadius:
                             msg.from === "user" ? "2px" : undefined,
@@ -177,16 +178,13 @@ function HelpDeskPanel({ isAdmin }: { isAdmin: boolean }) {
                         </p>
                         {msg.text}
                         <p className="text-[9px] text-muted-foreground mt-0.5">
-                          {new Date(
-                            Number(msg.createdAt) / 1_000_000,
-                          ).toLocaleString()}
+                          {new Date(msg.createdAt).toLocaleString()}
                         </p>
                       </div>
                     </div>
                   ))}
                 </div>
 
-                {/* Reply input */}
                 <div className="flex gap-2">
                   <Input
                     data-ocid={`admin.helpdesk.item.${idx + 1}.input`}
@@ -197,7 +195,7 @@ function HelpDeskPanel({ isAdmin }: { isAdmin: boolean }) {
                         [convKey]: e.target.value,
                       }))
                     }
-                    onKeyDown={(e) => e.key === "Enter" && handleReply(conv)}
+                    onKeyDown={(e) => e.key === "Enter" && handleReply(convKey)}
                     placeholder="Reply লিখুন..."
                     className="flex-1 h-9 text-sm rounded-xl"
                     style={{
@@ -208,7 +206,7 @@ function HelpDeskPanel({ isAdmin }: { isAdmin: boolean }) {
                   />
                   <Button
                     data-ocid={`admin.helpdesk.item.${idx + 1}.submit_button`}
-                    onClick={() => handleReply(conv)}
+                    onClick={() => handleReply(convKey)}
                     disabled={!replyInputs[convKey]?.trim()}
                     className="h-9 px-4 rounded-xl font-bold text-sm"
                     style={{
@@ -229,15 +227,16 @@ function HelpDeskPanel({ isAdmin }: { isAdmin: boolean }) {
   );
 }
 
-function UsersPanel() {
-  const [users, setUsers] = useState<LocalUser[]>([]);
+function UsersPanel({ isAdmin }: { isAdmin: boolean }) {
+  const {
+    data: users = [],
+    isLoading,
+    refetch,
+  } = useGetAllUserProfiles(isAdmin);
+  const adminSetBalance = useAdminSetUserBalance();
   const [search, setSearch] = useState("");
-  const [editBalancePhone, setEditBalancePhone] = useState<string | null>(null);
+  const [editPrincipal, setEditPrincipal] = useState<string | null>(null);
   const [newBalance, setNewBalance] = useState("");
-
-  useEffect(() => {
-    setUsers(getAllUsers());
-  }, []);
 
   const filtered = users.filter(
     (u) =>
@@ -245,21 +244,55 @@ function UsersPanel() {
       u.displayName.toLowerCase().includes(search.toLowerCase()),
   );
 
-  const handleUpdateBalance = (phone: string) => {
+  const handleUpdateBalance = async (principal: Principal) => {
     const val = Number.parseInt(newBalance, 10);
     if (Number.isNaN(val) || val < 0) {
       toast.error("সঠিক balance দিন");
       return;
     }
-    updateBalance(phone, val);
-    setUsers(getAllUsers());
-    setEditBalancePhone(null);
+    await adminSetBalance.mutateAsync({ principal, newBalance: BigInt(val) });
+    setEditPrincipal(null);
     setNewBalance("");
     toast.success("ব্যালেন্স update হয়েছে");
+    refetch();
   };
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center py-16">
+        <Loader2
+          size={28}
+          className="animate-spin"
+          style={{ color: "oklch(0.78 0.14 82)" }}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-3 pt-2">
+      {/* Header with count and refresh */}
+      <div className="flex items-center justify-between">
+        <p
+          className="text-sm font-bold"
+          style={{ color: "oklch(0.78 0.14 82)" }}
+        >
+          মোট {users.length} জন registered
+        </p>
+        <button
+          type="button"
+          onClick={() => refetch()}
+          className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-lg"
+          style={{
+            background: "oklch(0.22 0.04 245)",
+            color: "oklch(0.65 0.10 245)",
+          }}
+        >
+          <RefreshCw size={12} />
+          Refresh
+        </button>
+      </div>
+
       {/* Search */}
       <Input
         data-ocid="admin.users.search"
@@ -281,156 +314,157 @@ function UsersPanel() {
           className="flex flex-col items-center justify-center py-16 gap-3"
         >
           <Users size={40} className="text-muted-foreground" />
-          <p className="text-muted-foreground font-medium">কোনো user নেই</p>
+          <p className="text-muted-foreground font-medium">
+            {users.length === 0
+              ? "এখনো কোনো user register করেনি"
+              : "কোনো user পাওয়া যায়নি"}
+          </p>
         </motion.div>
       ) : (
-        filtered.map((user, idx) => (
-          <motion.div
-            key={user.phone}
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: idx * 0.04 }}
-            data-ocid={`admin.users.item.${idx + 1}`}
-            className="rounded-2xl p-4"
-            style={{
-              background: "oklch(0.18 0.04 245)",
-              border: "1px solid oklch(0.28 0.03 245)",
-            }}
-          >
-            {/* User info */}
-            <div className="flex items-start justify-between mb-3">
-              <div className="flex items-center gap-3">
-                <div
-                  className="w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm flex-shrink-0"
-                  style={{
-                    background: "oklch(0.28 0.08 260)",
-                    color: "oklch(0.78 0.14 82)",
-                  }}
-                >
-                  {user.displayName.slice(0, 2).toUpperCase()}
-                </div>
-                <div>
-                  <p className="font-bold text-sm text-foreground">
-                    {user.displayName}
-                  </p>
-                  <p
-                    className="text-xs font-mono"
-                    style={{ color: "oklch(0.65 0.10 245)" }}
+        filtered.map((user, idx) => {
+          const principalStr = user.principal.toString();
+          return (
+            <motion.div
+              key={principalStr}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: idx * 0.04 }}
+              data-ocid={`admin.users.item.${idx + 1}`}
+              className="rounded-2xl p-4"
+              style={{
+                background: "oklch(0.18 0.04 245)",
+                border: "1px solid oklch(0.28 0.03 245)",
+              }}
+            >
+              <div className="flex items-start justify-between mb-3">
+                <div className="flex items-center gap-3">
+                  <div
+                    className="w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm flex-shrink-0"
+                    style={{
+                      background: "oklch(0.28 0.08 260)",
+                      color: "oklch(0.78 0.14 82)",
+                    }}
                   >
-                    {user.phone}
+                    {user.displayName.slice(0, 2).toUpperCase()}
+                  </div>
+                  <div>
+                    <p className="font-bold text-sm text-foreground">
+                      {user.displayName}
+                    </p>
+                    <p
+                      className="text-xs font-mono"
+                      style={{ color: "oklch(0.78 0.14 82)" }}
+                    >
+                      {user.phone}
+                    </p>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <p
+                    className="text-lg font-black"
+                    style={{ color: "oklch(0.78 0.14 82)" }}
+                  >
+                    {Number(user.balance).toLocaleString()} TK
+                  </p>
+                  <p className="text-[10px] text-muted-foreground">
+                    {new Date(
+                      Number(user.createdAt) / 1_000_000,
+                    ).toLocaleDateString("bn-BD")}
                   </p>
                 </div>
               </div>
-              <div className="text-right">
-                <p
-                  className="text-lg font-black"
-                  style={{ color: "oklch(0.78 0.14 82)" }}
+
+              <div className="flex gap-2 mb-3">
+                <Badge
+                  style={{
+                    background:
+                      user.balance > 0
+                        ? "oklch(0.35 0.12 140 / 0.3)"
+                        : "oklch(0.25 0.04 245)",
+                    color:
+                      user.balance > 0
+                        ? "oklch(0.65 0.18 140)"
+                        : "oklch(0.55 0.02 245)",
+                    border: "none",
+                    fontSize: "10px",
+                  }}
                 >
-                  {user.balance.toLocaleString()} TK
-                </p>
-                <p className="text-[10px] text-muted-foreground">
-                  {new Date(user.createdAt).toLocaleDateString("bn-BD")}
-                </p>
+                  {Number(user.balance) > 0 ? "Active" : "No Balance"}
+                </Badge>
               </div>
-            </div>
 
-            {/* Stats row */}
-            <div className="flex gap-2 mb-3">
-              <Badge
-                style={{
-                  background: "oklch(0.30 0.06 245)",
-                  color: "oklch(0.72 0.06 245)",
-                  border: "none",
-                  fontSize: "10px",
-                }}
-              >
-                {user.rechargeHistory.length} recharge
-              </Badge>
-              <Badge
-                style={{
-                  background:
-                    user.balance > 0
-                      ? "oklch(0.35 0.12 140 / 0.3)"
-                      : "oklch(0.25 0.04 245)",
-                  color:
-                    user.balance > 0
-                      ? "oklch(0.65 0.18 140)"
-                      : "oklch(0.55 0.02 245)",
-                  border: "none",
-                  fontSize: "10px",
-                }}
-              >
-                {user.balance > 0 ? "Active" : "No Balance"}
-              </Badge>
-            </div>
-
-            {/* Edit balance */}
-            {editBalancePhone === user.phone ? (
-              <div className="flex gap-2">
-                <Input
-                  data-ocid={`admin.users.item.${idx + 1}.balance_input`}
-                  type="number"
-                  value={newBalance}
-                  onChange={(e) => setNewBalance(e.target.value)}
-                  onKeyDown={(e) =>
-                    e.key === "Enter" && handleUpdateBalance(user.phone)
-                  }
-                  placeholder="নতুন balance (TK)"
-                  className="flex-1 h-9 text-sm rounded-xl"
-                  style={{
-                    background: "oklch(0.22 0.04 245)",
-                    border: "1px solid oklch(0.45 0.14 82)",
-                    color: "oklch(0.92 0.01 245)",
-                  }}
-                  autoFocus
-                />
+              {editPrincipal === principalStr ? (
+                <div className="flex gap-2">
+                  <Input
+                    data-ocid={`admin.users.item.${idx + 1}.balance_input`}
+                    type="number"
+                    value={newBalance}
+                    onChange={(e) => setNewBalance(e.target.value)}
+                    onKeyDown={(e) =>
+                      e.key === "Enter" && handleUpdateBalance(user.principal)
+                    }
+                    placeholder="নতুন balance (TK)"
+                    className="flex-1 h-9 text-sm rounded-xl"
+                    style={{
+                      background: "oklch(0.22 0.04 245)",
+                      border: "1px solid oklch(0.45 0.14 82)",
+                      color: "oklch(0.92 0.01 245)",
+                    }}
+                    autoFocus
+                  />
+                  <Button
+                    data-ocid={`admin.users.item.${idx + 1}.save_button`}
+                    onClick={() => handleUpdateBalance(user.principal)}
+                    disabled={adminSetBalance.isPending}
+                    className="h-9 px-3 rounded-xl font-bold text-xs"
+                    style={{
+                      background: "oklch(0.35 0.12 140 / 0.4)",
+                      border: "1px solid oklch(0.65 0.18 140)",
+                      color: "oklch(0.78 0.18 140)",
+                    }}
+                  >
+                    {adminSetBalance.isPending ? (
+                      <Loader2 size={14} className="animate-spin" />
+                    ) : (
+                      <CheckCircle size={14} />
+                    )}
+                  </Button>
+                  <Button
+                    data-ocid={`admin.users.item.${idx + 1}.cancel_button`}
+                    onClick={() => {
+                      setEditPrincipal(null);
+                      setNewBalance("");
+                    }}
+                    className="h-9 px-3 rounded-xl font-bold text-xs"
+                    style={{
+                      background: "oklch(0.25 0.10 27 / 0.3)",
+                      border: "1px solid oklch(0.577 0.245 27)",
+                      color: "oklch(0.70 0.20 27)",
+                    }}
+                  >
+                    <XCircle size={14} />
+                  </Button>
+                </div>
+              ) : (
                 <Button
-                  data-ocid={`admin.users.item.${idx + 1}.save_button`}
-                  onClick={() => handleUpdateBalance(user.phone)}
-                  className="h-9 px-3 rounded-xl font-bold text-xs"
-                  style={{
-                    background: "oklch(0.35 0.12 140 / 0.4)",
-                    border: "1px solid oklch(0.65 0.18 140)",
-                    color: "oklch(0.78 0.18 140)",
-                  }}
-                >
-                  <CheckCircle size={14} />
-                </Button>
-                <Button
-                  data-ocid={`admin.users.item.${idx + 1}.cancel_button`}
+                  data-ocid={`admin.users.item.${idx + 1}.edit_balance_button`}
                   onClick={() => {
-                    setEditBalancePhone(null);
-                    setNewBalance("");
+                    setEditPrincipal(principalStr);
+                    setNewBalance(String(user.balance));
                   }}
-                  className="h-9 px-3 rounded-xl font-bold text-xs"
+                  className="w-full h-9 rounded-xl font-bold text-xs"
                   style={{
-                    background: "oklch(0.25 0.10 27 / 0.3)",
-                    border: "1px solid oklch(0.577 0.245 27)",
-                    color: "oklch(0.70 0.20 27)",
+                    background: "oklch(0.22 0.06 260)",
+                    border: "1px solid oklch(0.35 0.08 260)",
+                    color: "oklch(0.72 0.14 82)",
                   }}
                 >
-                  <XCircle size={14} />
+                  Balance Edit করুন
                 </Button>
-              </div>
-            ) : (
-              <Button
-                data-ocid={`admin.users.item.${idx + 1}.edit_balance_button`}
-                onClick={() => {
-                  setEditBalancePhone(user.phone);
-                  setNewBalance(String(user.balance));
-                }}
-                className="w-full h-9 rounded-xl font-bold text-xs"
-                style={{
-                  background: "oklch(0.22 0.06 260)",
-                  border: "1px solid oklch(0.35 0.08 260)",
-                  color: "oklch(0.72 0.14 82)",
-                }}
-              >
-                Balance Edit করুন
-              </Button>
-            )}
-          </motion.div>
-        ))
+              )}
+            </motion.div>
+          );
+        })
       )}
     </div>
   );
@@ -444,9 +478,6 @@ export function AdminPage({ onBack, forceAdmin }: AdminPageProps) {
   const approve = useApproveRecharge();
   const reject = useRejectRecharge();
   const [activeTab, setActiveTab] = useState<AdminTab>("recharge");
-  const { data: conversations = [] } =
-    useGetAllHelpConversations(effectiveAdmin);
-
   const handleApprove = async (id: bigint) => {
     await approve.mutateAsync(id);
     toast.success("Request approved! TK added to user.");
@@ -594,7 +625,7 @@ export function AdminPage({ onBack, forceAdmin }: AdminPageProps) {
           }}
         >
           Help Desk
-          {conversations.length > 0 && (
+          {getAllConversations().length > 0 && (
             <span
               className="ml-1.5 text-[10px] px-1.5 py-0.5 rounded-full font-bold"
               style={{
@@ -602,7 +633,7 @@ export function AdminPage({ onBack, forceAdmin }: AdminPageProps) {
                 color: "oklch(0.65 0.18 140)",
               }}
             >
-              {conversations.length}
+              {getAllConversations().length}
             </span>
           )}
         </button>
@@ -647,7 +678,7 @@ export function AdminPage({ onBack, forceAdmin }: AdminPageProps) {
                 className="flex flex-col items-center justify-center py-16 gap-3"
                 data-ocid="admin.empty_state"
               >
-                <span className="text-4xl">📭</span>
+                <span className="text-4xl">📤</span>
                 <p className="text-muted-foreground font-medium">
                   No pending requests
                 </p>
@@ -768,7 +799,7 @@ export function AdminPage({ onBack, forceAdmin }: AdminPageProps) {
 
         {activeTab === "helpdesk" && <HelpDeskPanel isAdmin={effectiveAdmin} />}
 
-        {activeTab === "users" && <UsersPanel />}
+        {activeTab === "users" && <UsersPanel isAdmin={effectiveAdmin} />}
       </ScrollArea>
     </div>
   );

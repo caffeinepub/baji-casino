@@ -40,6 +40,13 @@ export interface HelpConversation {
   'userId' : Principal,
   'messages' : Array<HelpMessage>,
 }
+export interface UserProfileWithBalance {
+  'principal' : Principal,
+  'phone' : string,
+  'displayName' : string,
+  'balance' : bigint,
+  'createdAt' : bigint,
+}
 export interface _SERVICE {
   '_initializeAccessControlWithSecret' : ActorMethod<[string], undefined>,
   'addChips' : ActorMethod<[bigint], bigint>,
@@ -61,6 +68,9 @@ export interface _SERVICE {
   'getUserHelpMessages' : ActorMethod<[], Array<HelpMessage>>,
   'getAllHelpConversations' : ActorMethod<[], Array<HelpConversation>>,
   'replyHelpMessage' : ActorMethod<[Principal, string], undefined>,
+  'registerUserProfile' : ActorMethod<[string, string], undefined>,
+  'getAllUserProfiles' : ActorMethod<[], Array<UserProfileWithBalance>>,
+  'adminSetUserBalance' : ActorMethod<[Principal, bigint], boolean>,
 }
 export declare const idlService: IDL.ServiceClass;
 export declare const idlInitArgs: IDL.Type[];

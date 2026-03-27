@@ -76,16 +76,19 @@ export function loginUser(
 }
 
 export function getCurrentUser(): LocalUser | null {
-  const phone = sessionStorage.getItem(CURRENT_PHONE_KEY);
+  // Use localStorage so session persists across browser restarts
+  const phone = localStorage.getItem(CURRENT_PHONE_KEY);
   if (!phone) return null;
   return getUser(phone);
 }
 
 export function setCurrentUser(phone: string): void {
-  sessionStorage.setItem(CURRENT_PHONE_KEY, phone);
+  localStorage.setItem(CURRENT_PHONE_KEY, phone);
 }
 
 export function logoutUser(): void {
+  localStorage.removeItem(CURRENT_PHONE_KEY);
+  // Also clear sessionStorage for backwards compatibility
   sessionStorage.removeItem(CURRENT_PHONE_KEY);
 }
 

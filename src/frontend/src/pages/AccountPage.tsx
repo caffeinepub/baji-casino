@@ -25,9 +25,10 @@ import { toast } from "sonner";
 import type { Page } from "../components/BottomNav";
 import { useLocalAuth } from "../hooks/useLocalAuth";
 import {
-  useGetUserHelpMessages,
-  useSendHelpMessage,
-} from "../hooks/useQueries";
+  type HelpDeskMessage,
+  getUserMessages,
+  sendUserMessage,
+} from "../utils/localHelpDesk";
 
 interface AccountPageProps {
   onNavigate?: (page: Page) => void;
@@ -57,19 +58,28 @@ export function AccountPage({
   // Help Desk chat state
   const [chatInput, setChatInput] = useState("");
   const chatEndRef = useRef<HTMLDivElement>(null);
-  const { data: helpMessages = [] } = useGetUserHelpMessages();
-  const sendHelpMessage = useSendHelpMessage();
+  const [helpMessages, setHelpMessages] = useState<HelpDeskMessage[]>([]);
+
+  // Poll for messages every 3 seconds
+  useEffect(() => {
+    if (!user) return;
+    const load = () => setHelpMessages(getUserMessages(user.phone));
+    load();
+    const interval = setInterval(load, 3000);
+    return () => clearInterval(interval);
+  }, [user]);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: scroll on messages change
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [helpMessages.length]);
 
-  const handleSendMessage = async () => {
+  const handleSendMessage = () => {
     const text = chatInput.trim();
     if (!text || !user) return;
     setChatInput("");
-    await sendHelpMessage.mutateAsync(text);
+    sendUserMessage(user.phone, text);
+    setHelpMessages(getUserMessages(user.phone));
   };
 
   const handleEditName = () => {
