@@ -32,6 +32,7 @@ import {
 interface AccountPageProps {
   onNavigate?: (page: Page) => void;
   onBack?: () => void;
+  onLogout?: () => void;
 }
 
 type SubSection =
@@ -41,7 +42,11 @@ type SubSection =
   | "transactions"
   | "helpdesk";
 
-export function AccountPage({ onNavigate, onBack }: AccountPageProps) {
+export function AccountPage({
+  onNavigate,
+  onBack,
+  onLogout,
+}: AccountPageProps) {
   const { user, logout, updateName, refreshUser } = useLocalAuth();
   const [editingName, setEditingName] = useState(false);
   const [nameInput, setNameInput] = useState("");
@@ -52,7 +57,6 @@ export function AccountPage({ onNavigate, onBack }: AccountPageProps) {
   // Help Desk chat state
   const [chatInput, setChatInput] = useState("");
   const chatEndRef = useRef<HTMLDivElement>(null);
-
   const { data: helpMessages = [] } = useGetUserHelpMessages();
   const sendHelpMessage = useSendHelpMessage();
 
@@ -63,13 +67,9 @@ export function AccountPage({ onNavigate, onBack }: AccountPageProps) {
 
   const handleSendMessage = async () => {
     const text = chatInput.trim();
-    if (!text) return;
+    if (!text || !user) return;
     setChatInput("");
-    try {
-      await sendHelpMessage.mutateAsync(text);
-    } catch {
-      toast.error("Message পাঠাতে সমস্যা হয়েছে");
-    }
+    await sendHelpMessage.mutateAsync(text);
   };
 
   const handleEditName = () => {
@@ -96,6 +96,11 @@ export function AccountPage({ onNavigate, onBack }: AccountPageProps) {
     }
   };
 
+  const handleLogout = () => {
+    logout();
+    onLogout?.();
+  };
+
   const initials = user
     ? user.displayName
         .split(" ")
@@ -110,10 +115,17 @@ export function AccountPage({ onNavigate, onBack }: AccountPageProps) {
 
   // Sub-section render
   if (subSection) {
+    const isHelpdesk = subSection === "helpdesk";
     return (
-      <div className="flex-1 overflow-y-auto scrollbar-hide">
+      <div
+        className={
+          isHelpdesk
+            ? "flex-1 flex flex-col overflow-hidden h-screen"
+            : "flex-1 overflow-y-auto scrollbar-hide"
+        }
+      >
         <div
-          className="flex items-center gap-3 px-4 py-4 sticky top-0 z-10"
+          className="flex items-center gap-3 px-4 py-4 sticky top-0 z-10 flex-shrink-0"
           style={{
             background: "oklch(0.16 0.04 245)",
             borderBottom: "1px solid oklch(0.25 0.03 245)",
@@ -137,15 +149,10 @@ export function AccountPage({ onNavigate, onBack }: AccountPageProps) {
         </div>
 
         <div
-          className={`px-4 pt-4 ${subSection === "helpdesk" ? "pb-0 flex flex-col" : "pb-24"}`}
-          style={
-            subSection === "helpdesk"
-              ? {
-                  height: "calc(100vh - 65px)",
-                  display: "flex",
-                  flexDirection: "column",
-                }
-              : {}
+          className={
+            isHelpdesk
+              ? "flex-1 overflow-hidden flex flex-col px-4 pt-0"
+              : "px-4 pt-4 pb-24"
           }
         >
           {subSection === "notifications" && (
@@ -290,11 +297,10 @@ export function AccountPage({ onNavigate, onBack }: AccountPageProps) {
                           <div>
                             <p className="text-sm font-semibold text-foreground">
                               {item.method.toUpperCase()} —{" "}
-                              {item.amount.toLocaleString()} টাকা
+                              {item.amount.toLocaleString()} TK
                             </p>
                             <p className="text-xs text-muted-foreground">
-                              TX: {item.txId.slice(0, 12)}
-                              {item.txId.length > 12 ? "..." : ""}
+                              {item.txId}
                             </p>
                           </div>
                         </div>
@@ -320,7 +326,7 @@ export function AccountPage({ onNavigate, onBack }: AccountPageProps) {
           {subSection === "helpdesk" && (
             <>
               {/* Chat messages */}
-              <div className="flex-1 overflow-y-auto space-y-3 pb-4">
+              <div className="flex-1 overflow-y-auto space-y-3 pb-4 pt-4">
                 {helpMessages.length === 0 && (
                   <div className="flex justify-start">
                     <div
@@ -396,10 +402,13 @@ export function AccountPage({ onNavigate, onBack }: AccountPageProps) {
                 <div ref={chatEndRef} />
               </div>
 
-              {/* Chat input */}
+              {/* Chat input — fixed at bottom, never moves */}
               <div
-                className="flex items-center gap-2 pt-3 pb-6"
-                style={{ borderTop: "1px solid oklch(0.25 0.03 245)" }}
+                className="flex items-center gap-2 pt-3 flex-shrink-0"
+                style={{
+                  borderTop: "1px solid oklch(0.25 0.03 245)",
+                  paddingBottom: "env(safe-area-inset-bottom, 16px)",
+                }}
               >
                 <Input
                   data-ocid="helpdesk.input"
@@ -418,7 +427,7 @@ export function AccountPage({ onNavigate, onBack }: AccountPageProps) {
                   type="button"
                   data-ocid="helpdesk.submit_button"
                   onClick={handleSendMessage}
-                  disabled={sendHelpMessage.isPending}
+                  disabled={!chatInput.trim()}
                   className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 transition-all active:scale-95"
                   style={{ background: "oklch(0.45 0.18 160)" }}
                 >
@@ -456,275 +465,190 @@ export function AccountPage({ onNavigate, onBack }: AccountPageProps) {
         ) : (
           <div className="w-9" />
         )}
-        <h1 className="font-bold text-foreground text-base">Profile</h1>
+        <h1 className="font-bold text-foreground text-base">My Account</h1>
         <button
           type="button"
-          data-ocid="account.close.button"
-          onClick={onBack || (() => {})}
+          data-ocid="account.logout.button"
+          onClick={handleLogout}
           className="w-9 h-9 rounded-full flex items-center justify-center"
           style={{ background: "oklch(0.22 0.04 245)" }}
         >
-          <X size={18} className="text-foreground" />
+          <LogOut size={16} className="text-muted-foreground" />
         </button>
       </div>
 
-      <div className="px-4 pt-5 pb-24">
-        {/* User info row */}
-        <motion.div
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="flex items-center gap-4 mb-3"
-        >
-          {/* Avatar */}
+      <div className="px-4 pt-5 pb-32 space-y-5">
+        {/* Avatar + name */}
+        <div className="flex flex-col items-center gap-3">
           <div
-            className="w-16 h-16 rounded-full flex items-center justify-center flex-shrink-0"
+            className="w-20 h-20 rounded-full flex items-center justify-center text-2xl font-bold"
             style={{
               background:
-                "linear-gradient(135deg, oklch(0.65 0.18 140), oklch(0.45 0.18 140))",
-            }}
-          >
-            <span className="text-xl font-black" style={{ color: "#fff" }}>
-              {initials}
-            </span>
-          </div>
-
-          {/* Name + phone columns */}
-          <div className="flex-1 min-w-0">
-            <div className="flex items-start justify-between gap-2">
-              {/* Full name */}
-              <div className="flex-1 min-w-0">
-                <p className="text-[10px] text-muted-foreground mb-0.5">
-                  Full name
-                </p>
-                <p className="font-bold text-foreground text-sm truncate">
-                  {user?.displayName || "Guest"}
-                </p>
-              </div>
-              {/* Separator */}
-              <div
-                className="w-px h-8 self-center"
-                style={{ background: "oklch(0.30 0.03 245)" }}
-              />
-              {/* Username / phone */}
-              <div className="flex-1 min-w-0">
-                <p className="text-[10px] text-muted-foreground mb-0.5">
-                  Username
-                </p>
-                <div className="flex items-center gap-1">
-                  <p className="font-bold text-foreground text-sm truncate">
-                    {user?.phone || "—"}
-                  </p>
-                  <button
-                    type="button"
-                    onClick={handleCopyPhone}
-                    className="flex-shrink-0"
-                    style={{
-                      color: copied
-                        ? "oklch(0.65 0.18 140)"
-                        : "oklch(0.50 0.03 245)",
-                    }}
-                  >
-                    {copied ? <Check size={12} /> : <Copy size={12} />}
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        </motion.div>
-
-        <p className="text-xs text-muted-foreground mb-4">
-          Sign up date: {signUpDate}
-        </p>
-
-        {/* Withdrawal / Deposit buttons */}
-        <div className="grid grid-cols-2 gap-3 mb-5">
-          <button
-            type="button"
-            data-ocid="account.withdrawal.button"
-            onClick={() => onNavigate?.("lobby")}
-            className="h-11 rounded-xl font-bold text-sm transition-all"
-            style={{
-              background: "oklch(0.20 0.04 245)",
-              border: "1px solid oklch(0.35 0.04 245)",
-              color: "oklch(0.75 0.02 245)",
-            }}
-          >
-            Withdrawal
-          </button>
-          <button
-            type="button"
-            data-ocid="account.deposit.button"
-            onClick={() => onNavigate?.("deposit")}
-            className="h-11 rounded-xl font-bold text-sm transition-all"
-            style={{
-              background:
-                "linear-gradient(135deg, oklch(0.52 0.18 160), oklch(0.42 0.18 160))",
+                "linear-gradient(135deg, oklch(0.45 0.18 160), oklch(0.35 0.15 245))",
               color: "#fff",
             }}
           >
-            Deposit
-          </button>
+            {initials}
+          </div>
+          <div className="text-center">
+            <p className="font-bold text-foreground text-lg">
+              {user?.displayName || "Guest"}
+            </p>
+            <p className="text-xs text-muted-foreground">
+              Member since {signUpDate}
+            </p>
+          </div>
         </div>
 
-        {/* Main wallet card */}
-        <motion.div
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.05 }}
-          className="rounded-2xl p-4 mb-5"
+        {/* Balance card */}
+        <div
+          className="rounded-2xl p-4"
           style={{
             background:
-              "linear-gradient(135deg, oklch(0.22 0.05 245), oklch(0.18 0.04 245))",
+              "linear-gradient(135deg, oklch(0.22 0.06 245), oklch(0.18 0.04 245))",
             border: "1px solid oklch(0.30 0.04 245)",
           }}
         >
           <div className="flex items-center justify-between mb-1">
-            <p className="text-xs text-muted-foreground font-medium">
-              Main Wallet
-            </p>
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                data-ocid="account.balance_toggle.button"
-                onClick={() => setBalanceVisible(!balanceVisible)}
-                className="text-muted-foreground hover:text-foreground transition-colors"
-              >
-                {balanceVisible ? <Eye size={15} /> : <EyeOff size={15} />}
-              </button>
-              <button
-                type="button"
-                data-ocid="account.balance_refresh.button"
-                onClick={() => {
-                  refreshUser();
-                  toast.success("Balance refreshed");
-                }}
-                className="text-muted-foreground hover:text-foreground transition-colors"
-              >
-                <RefreshCw size={15} />
-              </button>
-            </div>
+            <p className="text-xs text-muted-foreground">Wallet Balance</p>
+            <button
+              type="button"
+              onClick={() => setBalanceVisible((v) => !v)}
+              className="text-muted-foreground"
+            >
+              {balanceVisible ? <EyeOff size={14} /> : <Eye size={14} />}
+            </button>
           </div>
           <p
-            className="text-2xl font-black mb-3"
+            className="text-2xl font-bold"
             style={{ color: "oklch(0.78 0.14 82)" }}
           >
             {balanceVisible
               ? `${(user?.balance ?? 0).toLocaleString()} TK`
-              : "••••••"}
+              : "••••• TK"}
           </p>
-          <Separator style={{ background: "oklch(0.28 0.03 245)" }} />
-          <div className="flex items-center justify-between mt-3">
-            <p className="text-xs text-muted-foreground">VIP Points</p>
-            <span
-              className="text-xs font-bold px-2 py-0.5 rounded-full"
-              style={{
-                background: "oklch(0.78 0.14 82 / 0.15)",
-                color: "oklch(0.78 0.14 82)",
-              }}
-            >
-              Member
-            </span>
-          </div>
-        </motion.div>
-
-        {/* 4-icon 2x2 menu */}
-        <motion.div
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.1 }}
-          className="rounded-2xl p-4 mb-5"
-          style={{ background: "oklch(0.20 0.04 245)" }}
-        >
-          <div className="grid grid-cols-2 grid-rows-2 gap-2">
-            {[
-              {
-                id: "notifications" as SubSection,
-                icon: Bell,
-                label: "Notifications",
-              },
-              {
-                id: "personal" as SubSection,
-                icon: User,
-                label: "Personal Info",
-              },
-              {
-                id: "transactions" as SubSection,
-                icon: History,
-                label: "Transaction Records",
-              },
-              {
-                id: "helpdesk" as SubSection,
-                icon: MessageCircle,
-                label: "Help Desk",
-              },
-            ].map((item) => (
-              <button
-                key={item.label}
-                type="button"
-                data-ocid={`account.${item.id}.button`}
-                onClick={() => setSubSection(item.id)}
-                className="flex flex-col items-center gap-2 py-4 rounded-xl transition-all hover:bg-white/5 active:bg-white/10"
-                style={{ background: "oklch(0.26 0.05 245)" }}
-              >
-                <div
-                  className="w-12 h-12 rounded-full flex items-center justify-center"
+          <div className="flex gap-2 mt-3">
+            {onNavigate && (
+              <>
+                <Button
+                  data-ocid="account.deposit.button"
+                  size="sm"
+                  onClick={() => onNavigate("deposit")}
+                  className="flex-1 h-9 rounded-xl text-xs font-bold"
                   style={{
-                    background:
-                      "linear-gradient(135deg, oklch(0.32 0.08 245), oklch(0.24 0.06 245))",
+                    background: "oklch(0.45 0.18 160)",
+                    color: "#fff",
                   }}
                 >
-                  <item.icon
-                    size={22}
-                    style={{ color: "oklch(0.65 0.18 140)" }}
-                  />
-                </div>
-                <span
-                  className="text-[11px] font-semibold text-center leading-tight"
-                  style={{ color: "oklch(0.80 0.02 245)" }}
+                  Deposit
+                </Button>
+                <Button
+                  data-ocid="account.withdraw.button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => toast.info("Withdrawal আসছে শীঘ্রই")}
+                  className="flex-1 h-9 rounded-xl text-xs font-bold border-border"
                 >
-                  {item.label}
-                </span>
-              </button>
-            ))}
+                  Withdraw
+                </Button>
+              </>
+            )}
           </div>
-        </motion.div>
+        </div>
 
-        {/* Logout */}
+        {/* Phone */}
         {user && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ delay: 0.15 }}
+          <div
+            className="rounded-2xl px-4 py-3 flex items-center justify-between"
+            style={{ background: "oklch(0.20 0.04 245)" }}
           >
+            <div>
+              <p className="text-xs text-muted-foreground">Phone</p>
+              <p className="text-sm font-semibold text-foreground">
+                {user.phone}
+              </p>
+            </div>
             <button
               type="button"
-              data-ocid="account.logout.button"
-              onClick={logout}
-              className="w-full h-12 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-all"
-              style={{
-                background: "oklch(0.20 0.04 245)",
-                border: "1px solid oklch(0.577 0.245 27 / 0.4)",
-                color: "oklch(0.70 0.20 27)",
-              }}
+              data-ocid="account.copy.button"
+              onClick={handleCopyPhone}
+              className="text-muted-foreground"
             >
-              <LogOut size={16} />
-              Log Out
+              {copied ? (
+                <Check size={16} className="text-green-400" />
+              ) : (
+                <Copy size={16} />
+              )}
             </button>
-          </motion.div>
+          </div>
         )}
 
-        <p className="text-xs text-muted-foreground text-center mt-6">
-          &copy; {new Date().getFullYear()}. Built with love using{" "}
-          <a
-            href={`https://caffeine.ai?utm_source=caffeine-footer&utm_medium=referral&utm_content=${encodeURIComponent(window.location.hostname)}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="underline"
-            style={{ color: "oklch(0.78 0.14 82)" }}
-          >
-            caffeine.ai
-          </a>
-        </p>
+        <Separator style={{ background: "oklch(0.25 0.03 245)" }} />
+
+        {/* 4-icon menu */}
+        <div className="grid grid-cols-2 gap-3">
+          {[
+            {
+              icon: Bell,
+              label: "Notifications",
+              section: "notifications" as SubSection,
+              ocid: "account.notifications.button",
+            },
+            {
+              icon: User,
+              label: "Personal Info",
+              section: "personal" as SubSection,
+              ocid: "account.personal.button",
+            },
+            {
+              icon: History,
+              label: "Transactions",
+              section: "transactions" as SubSection,
+              ocid: "account.transactions.button",
+            },
+            {
+              icon: MessageCircle,
+              label: "Help Desk",
+              section: "helpdesk" as SubSection,
+              ocid: "account.helpdesk.button",
+            },
+          ].map(({ icon: Icon, label, section, ocid }) => (
+            <button
+              key={label}
+              type="button"
+              data-ocid={ocid}
+              onClick={() => setSubSection(section)}
+              className="flex flex-col items-center gap-2 rounded-2xl py-4 transition-all active:scale-95"
+              style={{
+                background: "oklch(0.20 0.04 245)",
+                border: "1px solid oklch(0.28 0.03 245)",
+              }}
+            >
+              <Icon size={22} style={{ color: "oklch(0.65 0.18 140)" }} />
+              <span className="text-xs font-semibold text-foreground">
+                {label}
+              </span>
+            </button>
+          ))}
+        </div>
+
+        {/* Refresh balance */}
+        <button
+          type="button"
+          data-ocid="account.refresh.button"
+          onClick={() => {
+            refreshUser();
+            toast.success("Balance refresh হয়েছে");
+          }}
+          className="w-full flex items-center justify-center gap-2 rounded-2xl py-3 transition-all"
+          style={{
+            background: "oklch(0.20 0.04 245)",
+            border: "1px solid oklch(0.28 0.03 245)",
+          }}
+        >
+          <RefreshCw size={16} className="text-muted-foreground" />
+          <span className="text-sm text-muted-foreground">Refresh Balance</span>
+        </button>
       </div>
     </div>
   );

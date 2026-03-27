@@ -70,6 +70,12 @@ export default function App() {
     }
   };
 
+  const handleLogout = () => {
+    setIsGuest(false);
+    setMainPage("lobby");
+    refreshUser();
+  };
+
   if (isInitializing) {
     return (
       <div
@@ -181,6 +187,7 @@ export default function App() {
           <AccountPage
             onNavigate={setMainPage}
             onBack={() => setMainPage("lobby")}
+            onLogout={handleLogout}
           />
         )}
         {mainPage === "admin" && (

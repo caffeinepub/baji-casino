@@ -11,28 +11,18 @@ import {
   XCircle,
 } from "lucide-react";
 import { motion } from "motion/react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import type { HelpConversation } from "../declarations/backend.did.d";
 import {
   useApproveRecharge,
-  useGetAllHelpConversations,
   useIsAdmin,
   usePendingRechargeRequests,
   useRejectRecharge,
+} from "../hooks/useQueries";
+import {
+  useGetAllHelpConversations,
   useReplyHelpMessage,
 } from "../hooks/useQueries";
-
-function shortPrincipal(p: { toString(): string }) {
-  const s = p.toString();
-  if (s.length <= 12) return s;
-  return `${s.slice(0, 5)}...${s.slice(-5)}`;
-}
-
-function formatTime(ns: bigint) {
-  const ms = Number(ns / BigInt(1_000_000));
-  return new Date(ms).toLocaleString();
-}
 
 interface AdminPageProps {
   onBack?: () => void;
@@ -41,41 +31,23 @@ interface AdminPageProps {
 
 type AdminTab = "recharge" | "helpdesk";
 
-function HelpDeskPanel({
-  conversations,
-  isLoading,
-}: { conversations: HelpConversation[]; isLoading: boolean }) {
-  const [expandedUserId, setExpandedUserId] = useState<string | null>(null);
-  const [replyInputs, setReplyInputs] = useState<Record<string, string>>({});
+function HelpDeskPanel({ isAdmin }: { isAdmin: boolean }) {
+  const { data: conversations = [] } = useGetAllHelpConversations(isAdmin);
   const replyMutation = useReplyHelpMessage();
+  const [expandedKey, setExpandedKey] = useState<string | null>(null);
+  const [replyInputs, setReplyInputs] = useState<Record<string, string>>({});
 
-  const handleReply = async (conv: HelpConversation) => {
-    const userId = conv.userId.toString();
-    const text = replyInputs[userId]?.trim();
+  const handleReply = async (conv: {
+    userId: { toString(): string };
+    messages: unknown[];
+  }) => {
+    const key = conv.userId.toString();
+    const text = replyInputs[key]?.trim();
     if (!text) return;
-    try {
-      await replyMutation.mutateAsync({ userId: conv.userId, text });
-      setReplyInputs((prev) => ({ ...prev, [userId]: "" }));
-      toast.success("Reply পাঠানো হয়েছে");
-    } catch {
-      toast.error("Reply পাঠাতে সমস্যা হয়েছে");
-    }
+    await replyMutation.mutateAsync({ userId: conv.userId as any, text });
+    setReplyInputs((prev) => ({ ...prev, [key]: "" }));
+    toast.success("Reply পাঠানো হয়েছে");
   };
-
-  if (isLoading) {
-    return (
-      <div
-        className="flex items-center justify-center py-12"
-        data-ocid="admin.helpdesk.loading_state"
-      >
-        <Loader2
-          size={28}
-          className="animate-spin"
-          style={{ color: "oklch(0.78 0.14 82)" }}
-        />
-      </div>
-    );
-  }
 
   if (conversations.length === 0) {
     return (
@@ -96,12 +68,12 @@ function HelpDeskPanel({
   return (
     <div className="space-y-3 pt-2">
       {conversations.map((conv, idx) => {
-        const userId = conv.userId.toString();
-        const isExpanded = expandedUserId === userId;
+        const convKey = conv.userId.toString();
+        const isExpanded = expandedKey === convKey;
         const lastMsg = conv.messages[conv.messages.length - 1];
         return (
           <motion.div
-            key={userId}
+            key={convKey}
             initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: idx * 0.05 }}
@@ -116,7 +88,7 @@ function HelpDeskPanel({
             <button
               type="button"
               data-ocid={`admin.helpdesk.item.${idx + 1}.toggle`}
-              onClick={() => setExpandedUserId(isExpanded ? null : userId)}
+              onClick={() => setExpandedKey(isExpanded ? null : convKey)}
               className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-white/5 transition-colors"
             >
               <div className="flex items-center gap-3 min-w-0">
@@ -131,7 +103,7 @@ function HelpDeskPanel({
                 </div>
                 <div className="min-w-0">
                   <p className="text-sm font-semibold text-foreground font-mono">
-                    {shortPrincipal(conv.userId)}
+                    {convKey.slice(0, 12)}...
                   </p>
                   {lastMsg && (
                     <p className="text-xs text-muted-foreground truncate max-w-[180px]">
@@ -151,7 +123,7 @@ function HelpDeskPanel({
                   {conv.messages.length} msgs
                 </Badge>
                 <span
-                  className="text-muted-foreground text-sm transition-transform"
+                  className="text-muted-foreground text-sm transition-transform inline-block"
                   style={{
                     transform: isExpanded ? "rotate(180deg)" : "rotate(0deg)",
                   }}
@@ -168,11 +140,13 @@ function HelpDeskPanel({
                 style={{ borderColor: "oklch(0.25 0.03 245)" }}
               >
                 {/* Message list */}
-                <div className="space-y-2 mb-4 max-h-64 overflow-y-auto">
+                <div className="space-y-2 mb-3 max-h-48 overflow-y-auto">
                   {conv.messages.map((msg) => (
                     <div
                       key={String(msg.id)}
-                      className={`flex ${msg.from === "user" ? "justify-end" : "justify-start"}`}
+                      className={`flex ${
+                        msg.from === "user" ? "justify-end" : "justify-start"
+                      }`}
                     >
                       <div
                         className="max-w-[80%] px-3 py-2 rounded-xl text-xs leading-relaxed"
@@ -201,7 +175,9 @@ function HelpDeskPanel({
                         </p>
                         {msg.text}
                         <p className="text-[9px] text-muted-foreground mt-0.5">
-                          {formatTime(msg.createdAt)}
+                          {new Date(
+                            Number(msg.createdAt) / 1_000_000,
+                          ).toLocaleString()}
                         </p>
                       </div>
                     </div>
@@ -212,11 +188,11 @@ function HelpDeskPanel({
                 <div className="flex gap-2">
                   <Input
                     data-ocid={`admin.helpdesk.item.${idx + 1}.input`}
-                    value={replyInputs[userId] || ""}
+                    value={replyInputs[convKey] || ""}
                     onChange={(e) =>
                       setReplyInputs((prev) => ({
                         ...prev,
-                        [userId]: e.target.value,
+                        [convKey]: e.target.value,
                       }))
                     }
                     onKeyDown={(e) => e.key === "Enter" && handleReply(conv)}
@@ -231,7 +207,7 @@ function HelpDeskPanel({
                   <Button
                     data-ocid={`admin.helpdesk.item.${idx + 1}.submit_button`}
                     onClick={() => handleReply(conv)}
-                    disabled={replyMutation.isPending}
+                    disabled={!replyInputs[convKey]?.trim()}
                     className="h-9 px-4 rounded-xl font-bold text-sm"
                     style={{
                       background: "oklch(0.35 0.12 140 / 0.4)",
@@ -239,11 +215,7 @@ function HelpDeskPanel({
                       color: "oklch(0.78 0.18 140)",
                     }}
                   >
-                    {replyMutation.isPending ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      "Send"
-                    )}
+                    Send
                   </Button>
                 </div>
               </div>
@@ -260,11 +232,11 @@ export function AdminPage({ onBack, forceAdmin }: AdminPageProps) {
   const effectiveAdmin = forceAdmin || !!isAdmin;
   const { data: requests = [], isLoading: reqLoading } =
     usePendingRechargeRequests();
-  const { data: conversations = [], isLoading: convLoading } =
-    useGetAllHelpConversations(effectiveAdmin);
   const approve = useApproveRecharge();
   const reject = useRejectRecharge();
   const [activeTab, setActiveTab] = useState<AdminTab>("recharge");
+  const { data: conversations = [] } =
+    useGetAllHelpConversations(effectiveAdmin);
 
   const handleApprove = async (id: bigint) => {
     await approve.mutateAsync(id);
@@ -487,7 +459,7 @@ export function AdminPage({ onBack, forceAdmin }: AdminPageProps) {
                             }`,
                           }}
                         >
-                          {req.method === "bkash" ? "🩷 bKash" : "🟠 Nagad"}
+                          {req.method === "bkash" ? "💗 bKash" : "🟠 Nagad"}
                         </Badge>
                         <span
                           className="text-lg font-black"
@@ -497,7 +469,9 @@ export function AdminPage({ onBack, forceAdmin }: AdminPageProps) {
                         </span>
                       </div>
                       <span className="text-xs text-muted-foreground">
-                        {formatTime(req.createdAt)}
+                        {new Date(
+                          Number(req.createdAt) / 1_000_000,
+                        ).toLocaleString()}
                       </span>
                     </div>
 
@@ -505,7 +479,7 @@ export function AdminPage({ onBack, forceAdmin }: AdminPageProps) {
                       <div className="flex gap-2 text-xs">
                         <span className="text-muted-foreground">User:</span>
                         <span className="text-foreground font-mono">
-                          {shortPrincipal(req.userId)}
+                          {req.userId.toString().slice(0, 8)}...
                         </span>
                       </div>
                       <div className="flex gap-2 text-xs">
@@ -565,12 +539,7 @@ export function AdminPage({ onBack, forceAdmin }: AdminPageProps) {
           </div>
         )}
 
-        {activeTab === "helpdesk" && (
-          <HelpDeskPanel
-            conversations={conversations}
-            isLoading={convLoading}
-          />
-        )}
+        {activeTab === "helpdesk" && <HelpDeskPanel isAdmin={effectiveAdmin} />}
       </ScrollArea>
     </div>
   );
