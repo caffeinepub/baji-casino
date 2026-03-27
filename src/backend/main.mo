@@ -43,10 +43,22 @@ actor {
     createdAt : Time.Time;
   };
 
+  type HelpMessage = {
+    id : Nat;
+    from : Text;
+    text : Text;
+    createdAt : Time.Time;
+  };
+
+  type HelpConversation = {
+    userId : Principal;
+    messages : [HelpMessage];
+  };
+
   let INITIAL_BALANCE = 0;
   let DAILY_BONUS_AMOUNT = 100;
   let DAY_NANOS : Int = 86_400_000_000_000;
-  let RECHARGE_BONUS_MULTIPLIER = 2; // 100% bonus: user gets 2x chips on recharge
+  let RECHARGE_BONUS_MULTIPLIER = 2;
 
   let accessControlState = AccessControl.initState();
   include MixinAuthorization(accessControlState);
@@ -57,6 +69,9 @@ actor {
   let favoriteGames = Map.empty<Principal, Set.Set<Text>>();
   let rechargeRequests = Map.empty<Nat, RechargeRequest>();
   var rechargeCounter : Nat = 0;
+
+  let helpMessages = Map.empty<Principal, List.List<HelpMessage>>();
+  var helpMessageCounter : Nat = 0;
 
   func getBalanceInternal(caller : Principal) : Nat {
     switch (balances.get(caller)) {
@@ -243,7 +258,6 @@ actor {
           createdAt = req.createdAt;
         };
         rechargeRequests.add(id, updated);
-        // 100% bonus: give 2x the requested amount
         let bonusAmount = req.amount * RECHARGE_BONUS_MULTIPLIER;
         let currentBalance = getBalanceInternal(req.userId);
         balances.add(req.userId, currentBalance + bonusAmount);
@@ -271,6 +285,78 @@ actor {
         };
         rechargeRequests.add(id, updated);
         true;
+      };
+    };
+  };
+
+  // ── Help Desk ──────────────────────────────────────────────────────────
+
+  public shared ({ caller }) func sendHelpMessage(text : Text) : async Nat {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
+      Runtime.trap("Unauthorized: Only users can send help messages");
+    };
+    let msgId = helpMessageCounter;
+    helpMessageCounter += 1;
+    let msg : HelpMessage = {
+      id = msgId;
+      from = "user";
+      text;
+      createdAt = Time.now();
+    };
+    switch (helpMessages.get(caller)) {
+      case (null) {
+        let msgs = List.empty<HelpMessage>();
+        msgs.add(msg);
+        helpMessages.add(caller, msgs);
+      };
+      case (?msgs) {
+        msgs.add(msg);
+      };
+    };
+    msgId;
+  };
+
+  public query ({ caller }) func getUserHelpMessages() : async [HelpMessage] {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
+      Runtime.trap("Unauthorized");
+    };
+    switch (helpMessages.get(caller)) {
+      case (null) { [] };
+      case (?msgs) { msgs.toArray() };
+    };
+  };
+
+  public query ({ caller }) func getAllHelpConversations() : async [HelpConversation] {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
+      Runtime.trap("Unauthorized: Only admin can view all conversations");
+    };
+    helpMessages.entries().toArray().map(
+      func((userId, msgs) : (Principal, List.List<HelpMessage>)) : HelpConversation {
+        { userId; messages = msgs.toArray() };
+      }
+    );
+  };
+
+  public shared ({ caller }) func replyHelpMessage(userId : Principal, text : Text) : async () {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
+      Runtime.trap("Unauthorized: Only admin can reply to help messages");
+    };
+    let msgId = helpMessageCounter;
+    helpMessageCounter += 1;
+    let msg : HelpMessage = {
+      id = msgId;
+      from = "support";
+      text;
+      createdAt = Time.now();
+    };
+    switch (helpMessages.get(userId)) {
+      case (null) {
+        let msgs = List.empty<HelpMessage>();
+        msgs.add(msg);
+        helpMessages.add(userId, msgs);
+      };
+      case (?msgs) {
+        msgs.add(msg);
       };
     };
   };

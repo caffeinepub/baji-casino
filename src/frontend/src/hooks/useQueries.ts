@@ -1,6 +1,11 @@
+import type { Principal } from "@icp-sdk/core/principal";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { GameResult } from "../backend.d";
-import type { RechargeRequest } from "../declarations/backend.did.d";
+import type {
+  HelpConversation,
+  HelpMessage,
+  RechargeRequest,
+} from "../declarations/backend.did.d";
 import { useActor } from "./useActor";
 
 export function useBalance() {
@@ -178,5 +183,67 @@ export function useIsAdmin() {
       return actor.isCallerAdmin();
     },
     enabled: !!actor && !isFetching,
+  });
+}
+
+export function useSendHelpMessage() {
+  const { actor } = useActor();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (text: string) => {
+      if (!actor) throw new Error("Not connected");
+      return (actor as any).sendHelpMessage(text) as Promise<bigint>;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["helpMessages"] });
+    },
+  });
+}
+
+export function useGetUserHelpMessages() {
+  const { actor, isFetching } = useActor();
+  return useQuery<HelpMessage[]>({
+    queryKey: ["helpMessages"],
+    queryFn: async () => {
+      if (!actor) return [];
+      return (actor as any).getUserHelpMessages() as Promise<HelpMessage[]>;
+    },
+    enabled: !!actor && !isFetching,
+    refetchInterval: 3000,
+  });
+}
+
+export function useGetAllHelpConversations(isAdmin: boolean) {
+  const { actor, isFetching } = useActor();
+  return useQuery<HelpConversation[]>({
+    queryKey: ["helpConversations"],
+    queryFn: async () => {
+      if (!actor) return [];
+      return (actor as any).getAllHelpConversations() as Promise<
+        HelpConversation[]
+      >;
+    },
+    enabled: !!actor && !isFetching && isAdmin,
+    refetchInterval: 5000,
+  });
+}
+
+export function useReplyHelpMessage() {
+  const { actor } = useActor();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      userId,
+      text,
+    }: { userId: Principal; text: string }) => {
+      if (!actor) throw new Error("Not connected");
+      return (actor as any).replyHelpMessage(
+        userId,
+        text,
+      ) as Promise<undefined>;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["helpConversations"] });
+    },
   });
 }

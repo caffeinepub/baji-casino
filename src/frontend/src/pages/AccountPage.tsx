@@ -6,25 +6,28 @@ import {
   Bell,
   Check,
   CheckCircle,
-  ChevronRight,
   Clock,
   Copy,
   Eye,
   EyeOff,
   History,
-  Lock,
   LogOut,
+  MessageCircle,
   RefreshCw,
-  Shield,
+  Send,
   User,
   X,
   XCircle,
 } from "lucide-react";
 import { motion } from "motion/react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import type { Page } from "../components/BottomNav";
 import { useLocalAuth } from "../hooks/useLocalAuth";
+import {
+  useGetUserHelpMessages,
+  useSendHelpMessage,
+} from "../hooks/useQueries";
 
 interface AccountPageProps {
   onNavigate?: (page: Page) => void;
@@ -35,8 +38,8 @@ type SubSection =
   | null
   | "notifications"
   | "personal"
-  | "security"
-  | "transactions";
+  | "transactions"
+  | "helpdesk";
 
 export function AccountPage({ onNavigate, onBack }: AccountPageProps) {
   const { user, logout, updateName, refreshUser } = useLocalAuth();
@@ -45,6 +48,29 @@ export function AccountPage({ onNavigate, onBack }: AccountPageProps) {
   const [balanceVisible, setBalanceVisible] = useState(true);
   const [subSection, setSubSection] = useState<SubSection>(null);
   const [copied, setCopied] = useState(false);
+
+  // Help Desk chat state
+  const [chatInput, setChatInput] = useState("");
+  const chatEndRef = useRef<HTMLDivElement>(null);
+
+  const { data: helpMessages = [] } = useGetUserHelpMessages();
+  const sendHelpMessage = useSendHelpMessage();
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: scroll on messages change
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [helpMessages.length]);
+
+  const handleSendMessage = async () => {
+    const text = chatInput.trim();
+    if (!text) return;
+    setChatInput("");
+    try {
+      await sendHelpMessage.mutateAsync(text);
+    } catch {
+      toast.error("Message পাঠাতে সমস্যা হয়েছে");
+    }
+  };
 
   const handleEditName = () => {
     setNameInput(user?.displayName || "");
@@ -105,12 +131,23 @@ export function AccountPage({ onNavigate, onBack }: AccountPageProps) {
           <h2 className="font-bold text-foreground">
             {subSection === "notifications" && "Notifications"}
             {subSection === "personal" && "Personal Info"}
-            {subSection === "security" && "Login & Security"}
             {subSection === "transactions" && "Transaction Records"}
+            {subSection === "helpdesk" && "Help Desk"}
           </h2>
         </div>
 
-        <div className="px-4 pt-4 pb-24">
+        <div
+          className={`px-4 pt-4 ${subSection === "helpdesk" ? "pb-0 flex flex-col" : "pb-24"}`}
+          style={
+            subSection === "helpdesk"
+              ? {
+                  height: "calc(100vh - 65px)",
+                  display: "flex",
+                  flexDirection: "column",
+                }
+              : {}
+          }
+        >
           {subSection === "notifications" && (
             <div
               className="rounded-2xl p-6 text-center"
@@ -189,23 +226,6 @@ export function AccountPage({ onNavigate, onBack }: AccountPageProps) {
                   </div>
                 )}
               </div>
-            </div>
-          )}
-
-          {subSection === "security" && (
-            <div
-              className="rounded-2xl p-6 text-center"
-              style={{ background: "oklch(0.20 0.04 245)" }}
-            >
-              <Shield
-                size={32}
-                className="mx-auto mb-3"
-                style={{ color: "oklch(0.65 0.18 140)" }}
-              />
-              <p className="text-foreground font-semibold">Login & Security</p>
-              <p className="text-sm text-muted-foreground mt-1">
-                Phone number দিয়ে login করা হয়।
-              </p>
             </div>
           )}
 
@@ -295,6 +315,117 @@ export function AccountPage({ onNavigate, onBack }: AccountPageProps) {
                 </div>
               )}
             </div>
+          )}
+
+          {subSection === "helpdesk" && (
+            <>
+              {/* Chat messages */}
+              <div className="flex-1 overflow-y-auto space-y-3 pb-4">
+                {helpMessages.length === 0 && (
+                  <div className="flex justify-start">
+                    <div
+                      className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 mr-2 mt-1"
+                      style={{ background: "oklch(0.30 0.08 245)" }}
+                    >
+                      <MessageCircle
+                        size={14}
+                        style={{ color: "oklch(0.65 0.18 140)" }}
+                      />
+                    </div>
+                    <div
+                      className="max-w-[75%] px-4 py-2.5 rounded-2xl text-sm leading-relaxed"
+                      style={{
+                        background: "oklch(0.22 0.04 245)",
+                        color: "oklch(0.92 0.01 245)",
+                        borderBottomLeftRadius: "4px",
+                      }}
+                    >
+                      <p
+                        className="text-[10px] font-bold mb-1"
+                        style={{ color: "oklch(0.65 0.18 140)" }}
+                      >
+                        Support
+                      </p>
+                      স্বাগতম! Baji Win Support-এ আপনাকে স্বাগতম। কীভাবে সাহায্য করতে
+                      পারি?
+                    </div>
+                  </div>
+                )}
+                {helpMessages.map((msg) => (
+                  <div
+                    key={String(msg.id)}
+                    className={`flex ${msg.from === "user" ? "justify-end" : "justify-start"}`}
+                  >
+                    {msg.from === "support" && (
+                      <div
+                        className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 mr-2 mt-1"
+                        style={{ background: "oklch(0.30 0.08 245)" }}
+                      >
+                        <MessageCircle
+                          size={14}
+                          style={{ color: "oklch(0.65 0.18 140)" }}
+                        />
+                      </div>
+                    )}
+                    <div
+                      className="max-w-[75%] px-4 py-2.5 rounded-2xl text-sm leading-relaxed"
+                      style={{
+                        background:
+                          msg.from === "user"
+                            ? "oklch(0.45 0.18 160)"
+                            : "oklch(0.22 0.04 245)",
+                        color: "oklch(0.92 0.01 245)",
+                        borderBottomRightRadius:
+                          msg.from === "user" ? "4px" : undefined,
+                        borderBottomLeftRadius:
+                          msg.from === "support" ? "4px" : undefined,
+                      }}
+                    >
+                      {msg.from === "support" && (
+                        <p
+                          className="text-[10px] font-bold mb-1"
+                          style={{ color: "oklch(0.65 0.18 140)" }}
+                        >
+                          Support
+                        </p>
+                      )}
+                      {msg.text}
+                    </div>
+                  </div>
+                ))}
+                <div ref={chatEndRef} />
+              </div>
+
+              {/* Chat input */}
+              <div
+                className="flex items-center gap-2 pt-3 pb-6"
+                style={{ borderTop: "1px solid oklch(0.25 0.03 245)" }}
+              >
+                <Input
+                  data-ocid="helpdesk.input"
+                  value={chatInput}
+                  onChange={(e) => setChatInput(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && handleSendMessage()}
+                  placeholder="Message লিখুন..."
+                  className="flex-1 h-10 text-sm rounded-xl"
+                  style={{
+                    background: "oklch(0.22 0.04 245)",
+                    border: "1px solid oklch(0.30 0.04 245)",
+                    color: "oklch(0.92 0.01 245)",
+                  }}
+                />
+                <button
+                  type="button"
+                  data-ocid="helpdesk.submit_button"
+                  onClick={handleSendMessage}
+                  disabled={sendHelpMessage.isPending}
+                  className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 transition-all active:scale-95"
+                  style={{ background: "oklch(0.45 0.18 160)" }}
+                >
+                  <Send size={16} style={{ color: "#fff" }} />
+                </button>
+              </div>
+            </>
           )}
         </div>
       </div>
@@ -496,67 +627,66 @@ export function AccountPage({ onNavigate, onBack }: AccountPageProps) {
           </div>
         </motion.div>
 
-        {/* Menu items */}
+        {/* 4-icon 2x2 menu */}
         <motion.div
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.1 }}
-          className="rounded-2xl overflow-hidden mb-5"
+          className="rounded-2xl p-4 mb-5"
           style={{ background: "oklch(0.20 0.04 245)" }}
         >
-          {[
-            {
-              id: "notifications" as SubSection,
-              icon: Bell,
-              label: "Notifications",
-            },
-            {
-              id: "personal" as SubSection,
-              icon: User,
-              label: "Personal Info",
-            },
-            {
-              id: "security" as SubSection,
-              icon: Lock,
-              label: "Login & Security",
-            },
-            {
-              id: "transactions" as SubSection,
-              icon: History,
-              label: "Transaction Records",
-            },
-          ].map((item, i, arr) => (
-            <div key={item.label}>
+          <div className="grid grid-cols-2 grid-rows-2 gap-2">
+            {[
+              {
+                id: "notifications" as SubSection,
+                icon: Bell,
+                label: "Notifications",
+              },
+              {
+                id: "personal" as SubSection,
+                icon: User,
+                label: "Personal Info",
+              },
+              {
+                id: "transactions" as SubSection,
+                icon: History,
+                label: "Transaction Records",
+              },
+              {
+                id: "helpdesk" as SubSection,
+                icon: MessageCircle,
+                label: "Help Desk",
+              },
+            ].map((item) => (
               <button
+                key={item.label}
                 type="button"
-                data-ocid={`account.${item.id?.replace("_", "") || ""}.button`}
-                onClick={() => {
-                  setSubSection(item.id);
-                }}
-                className="w-full flex items-center gap-3 px-4 py-3.5 transition-all hover:bg-white/5 active:bg-white/10"
+                data-ocid={`account.${item.id}.button`}
+                onClick={() => setSubSection(item.id)}
+                className="flex flex-col items-center gap-2 py-4 rounded-xl transition-all hover:bg-white/5 active:bg-white/10"
+                style={{ background: "oklch(0.26 0.05 245)" }}
               >
                 <div
-                  className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
-                  style={{ background: "oklch(0.26 0.05 245)" }}
+                  className="w-12 h-12 rounded-full flex items-center justify-center"
+                  style={{
+                    background:
+                      "linear-gradient(135deg, oklch(0.32 0.08 245), oklch(0.24 0.06 245))",
+                  }}
                 >
                   <item.icon
-                    size={16}
+                    size={22}
                     style={{ color: "oklch(0.65 0.18 140)" }}
                   />
                 </div>
-                <span className="flex-1 text-left text-sm font-medium text-foreground">
+                <span
+                  className="text-[11px] font-semibold text-center leading-tight"
+                  style={{ color: "oklch(0.80 0.02 245)" }}
+                >
                   {item.label}
                 </span>
-                <ChevronRight size={15} className="text-muted-foreground" />
               </button>
-              {i < arr.length - 1 && (
-                <div
-                  className="mx-4"
-                  style={{ height: "1px", background: "oklch(0.26 0.03 245)" }}
-                />
-              )}
-            </div>
-          ))}
+            ))}
+          </div>
         </motion.div>
 
         {/* Logout */}

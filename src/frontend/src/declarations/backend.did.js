@@ -18,6 +18,16 @@ export const GameResult = IDL.Record({
   'game' : IDL.Text,
   'amount' : IDL.Int,
 });
+export const HelpMessage = IDL.Record({
+  'id' : IDL.Nat,
+  'from' : IDL.Text,
+  'text' : IDL.Text,
+  'createdAt' : IDL.Int,
+});
+export const HelpConversation = IDL.Record({
+  'userId' : IDL.Principal,
+  'messages' : IDL.Vec(HelpMessage),
+});
 
 export const idlService = IDL.Service({
   '_initializeAccessControlWithSecret' : IDL.Func([IDL.Text], [], []),
@@ -32,6 +42,10 @@ export const idlService = IDL.Service({
   'isFavorite' : IDL.Func([IDL.Text], [IDL.Bool], ['query']),
   'recordGameRound' : IDL.Func([IDL.Text, IDL.Nat, IDL.Int], [], []),
   'toggleFavoriteGame' : IDL.Func([IDL.Text], [], []),
+  'sendHelpMessage' : IDL.Func([IDL.Text], [IDL.Nat], []),
+  'getUserHelpMessages' : IDL.Func([], [IDL.Vec(HelpMessage)], ['query']),
+  'getAllHelpConversations' : IDL.Func([], [IDL.Vec(HelpConversation)], ['query']),
+  'replyHelpMessage' : IDL.Func([IDL.Principal, IDL.Text], [], []),
 });
 
 export const idlInitArgs = [];
@@ -47,6 +61,16 @@ export const idlFactory = ({ IDL }) => {
     'game' : IDL.Text,
     'amount' : IDL.Int,
   });
+  const HelpMessage = IDL.Record({
+    'id' : IDL.Nat,
+    'from' : IDL.Text,
+    'text' : IDL.Text,
+    'createdAt' : IDL.Int,
+  });
+  const HelpConversation = IDL.Record({
+    'userId' : IDL.Principal,
+    'messages' : IDL.Vec(HelpMessage),
+  });
   
   return IDL.Service({
     '_initializeAccessControlWithSecret' : IDL.Func([IDL.Text], [], []),
@@ -61,6 +85,10 @@ export const idlFactory = ({ IDL }) => {
     'isFavorite' : IDL.Func([IDL.Text], [IDL.Bool], ['query']),
     'recordGameRound' : IDL.Func([IDL.Text, IDL.Nat, IDL.Int], [], []),
     'toggleFavoriteGame' : IDL.Func([IDL.Text], [], []),
+    'sendHelpMessage' : IDL.Func([IDL.Text], [IDL.Nat], []),
+    'getUserHelpMessages' : IDL.Func([], [IDL.Vec(HelpMessage)], ['query']),
+    'getAllHelpConversations' : IDL.Func([], [IDL.Vec(HelpConversation)], ['query']),
+    'replyHelpMessage' : IDL.Func([IDL.Principal, IDL.Text], [], []),
   });
 };
 

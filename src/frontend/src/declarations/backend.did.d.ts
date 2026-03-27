@@ -30,6 +30,16 @@ export interface RechargeRequest {
   'status' : RechargeStatus,
   'createdAt' : bigint,
 }
+export interface HelpMessage {
+  'id' : bigint,
+  'from' : string,
+  'text' : string,
+  'createdAt' : bigint,
+}
+export interface HelpConversation {
+  'userId' : Principal,
+  'messages' : Array<HelpMessage>,
+}
 export interface _SERVICE {
   '_initializeAccessControlWithSecret' : ActorMethod<[string], undefined>,
   'addChips' : ActorMethod<[bigint], bigint>,
@@ -47,6 +57,10 @@ export interface _SERVICE {
   'submitRechargeRequest' : ActorMethod<[string, bigint, string], bigint>,
   'approveRechargeRequest' : ActorMethod<[bigint], boolean>,
   'rejectRechargeRequest' : ActorMethod<[bigint], boolean>,
+  'sendHelpMessage' : ActorMethod<[string], bigint>,
+  'getUserHelpMessages' : ActorMethod<[], Array<HelpMessage>>,
+  'getAllHelpConversations' : ActorMethod<[], Array<HelpConversation>>,
+  'replyHelpMessage' : ActorMethod<[Principal, string], undefined>,
 }
 export declare const idlService: IDL.ServiceClass;
 export declare const idlInitArgs: IDL.Type[];
